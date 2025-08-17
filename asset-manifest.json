@@ -1,0 +1,15 @@
+{
+  "files": {
+    "main.css": "/pill/static/css/main.f64c930e.css",
+    "main.js": "/pill/static/js/main.9e5be25b.js",
+    "static/js/453.431f9162.chunk.js": "/pill/static/js/453.431f9162.chunk.js",
+    "index.html": "/pill/index.html",
+    "main.f64c930e.css.map": "/pill/static/css/main.f64c930e.css.map",
+    "main.9e5be25b.js.map": "/pill/static/js/main.9e5be25b.js.map",
+    "453.431f9162.chunk.js.map": "/pill/static/js/453.431f9162.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.f64c930e.css",
+    "static/js/main.9e5be25b.js"
+  ]
+}
