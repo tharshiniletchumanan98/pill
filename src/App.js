@@ -4,16 +4,18 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getDatabase, ref, onValue, set, update } from 'firebase/database';
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'firebase/auth';
 
-// Manually defining Firebase configuration to avoid compilation errors
-// NOTE: For this to work, you must create an account in Firebase Authentication with Email/Password sign-in enabled.
+// IMPORTANT: Do NOT hardcode API keys in production applications.
+// This is for demonstration purposes. In a real app, you would use a .env file.
+// For this app to work outside of this environment, create a .env file with these values:
+
 const firebaseConfig = {
-  apiKey: "AIzaSyBuETMWjce-ECQYuclvOnkOzp4FIOEQUTI",
-  authDomain: "pill-2bd05.firebaseapp.com",
-  databaseURL: "https://pill-2bd05-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "pill-2bd05",
-  storageBucket: "pill-2bd05.appspot.com",
-  messagingSenderId: "541233157497",
-  appId: "1:541233157497:web:ab123cd456ef7890ghij"
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
+  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
+  databaseURL: process.env.REACT_APP_FIREBASE_DATABASE_URL,
+  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.REACT_APP_FIREBASE_APP_ID,
 };
 
 const App = () => {
