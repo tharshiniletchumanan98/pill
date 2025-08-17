@@ -1,10 +1,11 @@
-// @ts-nocheck
 import React, { useState, useEffect } from 'react';
-import { Power, Ruler, Clock, CheckCircle, XCircle, Save, RefreshCcw, PillBottle } from 'lucide-react';
+import { Power, Ruler, Clock, CheckCircle, XCircle, Save, RefreshCcw, PillBottle, LogIn, LogOut, Mail, Lock } from 'lucide-react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getDatabase, ref, onValue, set, update } from 'firebase/database';
+import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'firebase/auth';
 
 // Manually defining Firebase configuration to avoid compilation errors
+// NOTE: For this to work, you must create an account in Firebase Authentication with Email/Password sign-in enabled.
 const firebaseConfig = {
   apiKey: "AIzaSyBuETMWjce-ECQYuclvOnkOzp4FIOEQUTI",
   authDomain: "pill-2bd05.firebaseapp.com",
@@ -16,7 +17,15 @@ const firebaseConfig = {
 };
 
 const App = () => {
-  // State for displaying device data from Firebase
+  // Authentication states
+  const [user, setUser] = useState(null);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loginError, setLoginError] = useState('');
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [currentTime, setCurrentTime] = useState('');
+
+  // App states for Firebase
   const [deviceData, setDeviceData] = useState({
     distance: 0,
     pillTaken: "NO",
@@ -25,26 +34,22 @@ const App = () => {
     timeAutomaticB: "0",
     timeAutomaticC: "0",
   });
-  // State for the user's input in the automatic times fields
   const [automaticTimes, setAutomaticTimes] = useState({
     timeAutomaticA: "",
     timeAutomaticB: "",
     timeAutomaticC: "",
   });
-  // State for the connection status
   const [status, setStatus] = useState('Disconnected');
-  // State for the device reset button status
-  const [resetStatus, setResetStatus] = useState('idle'); // 'idle', 'loading', 'success', 'error'
-  // State for initial loading
+  const [resetStatus, setResetStatus] = useState('idle');
   const [loading, setLoading] = useState(true);
-  // State for Firebase errors
   const [firebaseError, setFirebaseError] = useState(null);
-  // State for the Firebase database instance
   const [db, setDb] = useState(null);
+  const [auth, setAuth] = useState(null);
 
   useEffect(() => {
     let app;
     let database;
+    let authService;
 
     try {
       if (!getApps().length) {
@@ -52,29 +57,57 @@ const App = () => {
       } else {
         app = getApp();
       }
-
-      database = getDatabase(app);
-      setDb(database);
-      setLoading(false);
       
-      // Setup listener for the root-level path
-      setupRealtimeDbListener(database);
+      database = getDatabase(app);
+      authService = getAuth(app);
+      setDb(database);
+      setAuth(authService);
+      setLoading(false);
 
+      // Set up authentication state listener
+      onAuthStateChanged(authService, (currentUser) => {
+        setUser(currentUser);
+        setIsAuthReady(true);
+      });
+      
     } catch (e) {
       console.error("Firebase Initialization Error:", e);
       setFirebaseError(`Failed to initialize Firebase: ${e.message}`);
       setLoading(false);
     }
 
-    return () => {
-      // Cleanup function to detach the listener
-    };
+    // Set up a timer to update the current time every second
+    const intervalId = setInterval(() => {
+      const now = new Date();
+      const hours = String(now.getHours()).padStart(2, '0');
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      const seconds = String(now.getSeconds()).padStart(2, '0');
+      setCurrentTime(`${hours}:${minutes}:${seconds}`);
+    }, 1000);
+
+    // Clean up the interval when the component unmounts
+    return () => clearInterval(intervalId);
+
   }, []);
 
-  const setupRealtimeDbListener = (database) => {
-    if (!database) return;
-    const dataRef = ref(database, '/');
+  // Effect to handle Firebase DB listener after authentication is ready
+  useEffect(() => {
+    if (db && isAuthReady) {
+      if (user) {
+        setupRealtimeDbListener(db);
+      } else {
+        // Clear data if user logs out
+        setDeviceData({
+          distance: 0, pillTaken: "NO", pillTakenTime: "",
+          timeAutomaticA: "0", timeAutomaticB: "0", timeAutomaticC: "0",
+        });
+        setStatus('Disconnected');
+      }
+    }
+  }, [db, isAuthReady, user]);
 
+  const setupRealtimeDbListener = (database) => {
+    const dataRef = ref(database, '/');
     onValue(dataRef, (snapshot) => {
       const data = snapshot.val();
       if (data) {
@@ -88,19 +121,10 @@ const App = () => {
         });
         setStatus('Connected');
       } else {
-        // Initialize the database with default values if it's empty
         set(dataRef, {
-          mode: 'automatic',
-          distance: 0,
-          pillTaken: "NO",
-          pillTakenTime: "",
-          reset: "NO", // Initialize the new reset path
-          timeAutomaticA: "0",
-          timeAutomaticB: "0",
-          timeAutomaticC: "0",
-          timeManualA: "0",
-          timeManualB: "0",
-          timeManualC: "0",
+          mode: 'automatic', distance: 0, pillTaken: "NO", pillTakenTime: "",
+          reset: "NO", timeAutomaticA: "0", timeAutomaticB: "0", timeAutomaticC: "0",
+          timeManualA: "0", timeManualB: "0", timeManualC: "0",
         });
         setStatus('Connected');
       }
@@ -110,8 +134,30 @@ const App = () => {
     });
   };
 
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    if (!auth) return;
+    setLoginError('');
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+    } catch (error) {
+      setLoginError('Login failed. Please check your email and password.');
+      console.error("Login error:", error);
+    }
+  };
+
+  const handleLogout = async () => {
+    if (!auth) return;
+    try {
+      await signOut(auth);
+      // Data will be cleared by the useEffect hook
+    } catch (error) {
+      console.error("Logout error:", error);
+    }
+  };
+
   const handleSaveAutomaticTimes = async () => {
-    if (!db) return;
+    if (!db || !user) return;
     const dataRef = ref(db, '/');
     try {
       await update(dataRef, {
@@ -125,18 +171,17 @@ const App = () => {
   };
 
   const handleResetDevice = async () => {
-    if (!db) return;
+    if (!db || !user) return;
     setResetStatus('loading');
     const resetRef = ref(db, 'reset');
     try {
-      // As requested, this now sets the 'reset' value to "YES"
       await set(resetRef, 'YES');
       setResetStatus('success');
-      setTimeout(() => setResetStatus('idle'), 3000); // Reset status after 3 seconds
+      setTimeout(() => setResetStatus('idle'), 3000);
     } catch (e) {
       console.error("Error resetting device: ", e);
       setResetStatus('error');
-      setTimeout(() => setResetStatus('idle'), 3000); // Reset status after 3 seconds
+      setTimeout(() => setResetStatus('idle'), 3000);
     }
   };
 
@@ -153,7 +198,7 @@ const App = () => {
     return status === 'YES' ? <CheckCircle className="text-green-500" size={32} /> : <XCircle className="text-red-500" size={32} />;
   };
 
-  if (loading) {
+  if (loading || !isAuthReady) {
     return (
       <div className="bg-gray-100 min-h-screen p-4 sm:p-8 font-sans antialiased flex items-center justify-center">
         <div className="text-gray-500 text-lg">Loading...</div>
@@ -172,18 +217,80 @@ const App = () => {
     );
   }
 
+  if (!user) {
+    return (
+      <div className="bg-gray-100 min-h-screen p-4 sm:p-8 font-sans antialiased flex items-center justify-center">
+        <div className="bg-white rounded-3xl shadow-xl p-8 max-w-sm w-full text-center">
+          <h1 className="text-2xl font-bold text-gray-800 mb-6 flex items-center justify-center">
+            <LogIn className="mr-2 text-indigo-600" />
+            Login to Dispenser
+          </h1>
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div className="relative">
+              <Mail size={20} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="email"
+                placeholder="Email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full p-2 pl-10 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                required
+              />
+            </div>
+            <div className="relative">
+              <Lock size={20} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="password"
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full p-2 pl-10 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                required
+              />
+            </div>
+            {loginError && <p className="text-red-500 text-sm">{loginError}</p>}
+            <button
+              type="submit"
+              className="w-full bg-indigo-600 text-white font-semibold py-2 rounded-lg hover:bg-indigo-700 transition-colors"
+            >
+              Sign In
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  // Main app content
   return (
     <div className="bg-gray-100 min-h-screen p-4 sm:p-8 font-sans antialiased flex items-center justify-center">
       <div className="max-w-4xl mx-auto bg-white rounded-3xl shadow-xl overflow-hidden p-6 md:p-10">
         
         {/* Header Section */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-6 mb-6 border-b border-gray-200">
-          <h1 className="text-3xl font-bold text-gray-800 flex items-center">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 flex items-center mb-2 sm:mb-0">
             <PillBottle className="mr-3 text-indigo-600" size={32} />
-            Automatic Pill Dispenser Monitor
+            Automatic Pill Dispenser
           </h1>
-          <div className={`mt-4 sm:mt-0 px-4 py-1 rounded-full text-sm font-semibold ${getStatusColor(status)}`}>
-            Status: {status}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center mt-4 sm:mt-0 space-y-2 sm:space-y-0 sm:space-x-4">
+            {/* Display the current time */}
+            <div className="text-sm font-semibold text-gray-600">
+              Current Time: {currentTime}
+            </div>
+            {/* Display the logged-in user's email */}
+            <div className="text-sm font-semibold text-gray-600">
+              Logged in as: {user.email}
+            </div>
+            <div className={`px-4 py-1 rounded-full text-sm font-semibold ${getStatusColor(status)}`}>
+              Status: {status}
+            </div>
+            <button
+              onClick={handleLogout}
+              className="px-4 py-1 rounded-full text-sm font-semibold bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors flex items-center"
+            >
+              <LogOut size={16} className="mr-1" />
+              Logout
+            </button>
           </div>
         </div>
 
