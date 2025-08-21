@@ -6,7 +6,7 @@ import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from
 
 // IMPORTANT: Do NOT hardcode API keys in production applications.
 // This is for demonstration purposes. In a real app, you would use a .env file.
-// For this app to work outside of this environment, create a .env file with these values:
+// For this app to work outside of this environment, create a .env file with these value
 
 const firebaseConfig = {
   apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
